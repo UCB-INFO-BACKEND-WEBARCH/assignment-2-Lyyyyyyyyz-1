@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: taskmanager
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data #persist data across container restarts
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379" #  needed for rq worker + optional local inspection
+
+  app:
+    build: .
+    depends_on:
+      - db
+      - redis
+    environment:
+      DATABASE_URL: postgresql://postgres:password@db:5432/taskmanager
+      REDIS_URL: redis://redis:6379/0
+      FLASK_APP: run.py
+      FLASK_ENV: development
+    ports:
+      - "5001:5000" #需要为5001 来跑，有个controlc 占用了5000
+    command: >
+      sh -c "python -m flask --app run.py db upgrade &&
+             python -m flask --app run.py run --host=0.0.0.0 --port=5000"
+
+  worker:
+    build: .
+    depends_on:
+      - db
+      - redis
+    environment:
+      DATABASE_URL: postgresql://postgres:password@db:5432/taskmanager
+      REDIS_URL: redis://redis:6379/0
+      FLASK_APP: run.py
+      FLASK_ENV: development
+      # separate worker process for rq queue
+    command: python worker.py
+
+volumes:
+  postgres_data:
